@@ -1,0 +1,53 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+my $my_uid = 1269604316;
+my $recursion_max = 2;
+
+sub get_friends_for_uid {
+	my ($uid, $name) = @_;
+
+	my $raw_data = `curl -s -A Opera 'http://www.facebook.com/ajax/typeahead_friends.php?u=$uid&__a=1'`;
+
+  my %names = ();
+  while ($raw_data =~ /"t":"([^"]*)","i":(\d+)/g) {
+  	$names{$1} = $2;
+  }
+
+  warn "got ", scalar keys %names,  " friends for $name\n";
+
+  return %names;
+}
+
+my %friends = get_friends_for_uid($my_uid, 'me');
+
+my %friends_of_friends = ();
+
+my $max = 100;
+while (my ($name, $uid) = each %friends) {
+  $friends_of_friends{$name} = { get_friends_for_uid($uid, $name) };
+  last unless $max--;
+}
+
+my %friends_reverse_hash = ();
+
+while (my ($friend_name, $friend_list) = each %friends_of_friends) {
+   while (my ($fof_name, $fof_id) = each %$friend_list) {
+   	 $friends_reverse_hash{$fof_name} ||= [];
+   	 push (@{$friends_reverse_hash{$fof_name}}, $friend_name);
+   }
+}
+
+my @list = 
+  grep { $_->[2] eq 'non-friend' }
+  map { [ $_->[0], $friends_reverse_hash{$_->[0]}, exists $friends{$_->[0]} ? "friend" : "non-friend" ] }
+  sort { $a->[1] <=> $b->[1] }
+  map { [ $_, scalar @{$friends_reverse_hash{$_}} ] }
+  keys %friends_reverse_hash;
+
+foreach my $element (@list) {
+	print "$element->[0] is friends with ", scalar @{$element->[1]}, " friends\n";
+	print "\t", join(', ', @{$element->[1]}), "\n";
+}
